@@ -1,5 +1,5 @@
 import $ from 'jquery';
-
+import api from './api';
 import store from './store';
 
 const generateItemElement = function (item) {
@@ -31,7 +31,26 @@ const generateShoppingItemsString = function (shoppingList) {
   return items.join('');
 };
 
+function generateErrorHTML(errorMessage){
+  return `
+    <section class="error-message">
+      <button id="delete-error">X</button>
+      <p>${errorMessage}</p>
+    </section>
+  `
+}
+
+function renderError(){
+  if(store.error){
+    let err = generateErrorHTML(store.error)
+    $('.errors').html(err);
+  } else{
+    $('.errors').empty();
+  }
+}
+
 const render = function () {
+  renderError();
   // Filter item list if store prop is true by item.checked === false
   let items = [...store.items];
   if (store.hideCheckedItems) {
@@ -50,10 +69,17 @@ const handleNewItemSubmit = function () {
     event.preventDefault();
     const newItemName = $('.js-shopping-list-entry').val();
     $('.js-shopping-list-entry').val('');
-    store.addItem(newItemName);
-    render();
+    api.createItem(newItemName)
+      .then((newItem) => {
+      store.addItem(newItem)
+      render();
+      })
+      .catch((error)=> {
+        store.createError(error.message)
+        renderError()
+      })
   });
-};
+}
 
 const getItemIdFromElement = function (item) {
   return $(item)
@@ -67,9 +93,16 @@ const handleDeleteItemClicked = function () {
     // get the index of the item in store.items
     const id = getItemIdFromElement(event.currentTarget);
     // delete the item
-    store.findAndDelete(id);
-    // render the updated shopping list
-    render();
+    api.deleteItem(id)
+      .then(()=>{
+        store.findAndDelete(id);
+        // render the updated shopping list
+        render();
+      })
+      .catch((error)=>{
+        console.log(error)
+        store.createError(error.message)
+      })
   });
 };
 
@@ -78,16 +111,33 @@ const handleEditShoppingItemSubmit = function () {
     event.preventDefault();
     const id = getItemIdFromElement(event.currentTarget);
     const itemName = $(event.currentTarget).find('.shopping-item').val();
-    store.findAndUpdateName(id, itemName);
-    render();
+    //store.findAndUpdateName(id, itemName);
+    api.updateItem(id, {name: itemName})
+      .then(()=> {
+        store.findAndUpdate(id,{name: itemName})
+        render();
+      })
+      .catch((error)=>{
+        console.log(error)
+        store.createError(error.message)
+      })
   });
 };
 
 const handleItemCheckClicked = function () {
   $('.js-shopping-list').on('click', '.js-item-toggle', event => {
     const id = getItemIdFromElement(event.currentTarget);
-    store.findAndToggleChecked(id);
-    render();
+    //store.findAndToggleChecked(id);
+    const item = store.findById(id)
+    api.updateItem(id, {checked: !item.checked})
+      .then(()=>{
+        store.findAndUpdate(id, {checked: !item.checked})
+        render();
+      })
+      .catch((error)=>{
+        console.log(error)
+        store.createError(error.message)
+      })
   });
 };
 
@@ -98,12 +148,20 @@ const handleToggleFilterClick = function () {
   });
 };
 
+function handleDeleteErrorClick(){
+  $('.errors').on('click', '#delete-error', ()=>{
+    store.createError(null)
+    renderError()
+  })
+}
+
 const bindEventListeners = function () {
   handleNewItemSubmit();
   handleItemCheckClicked();
   handleDeleteItemClicked();
   handleEditShoppingItemSubmit();
   handleToggleFilterClick();
+  handleDeleteErrorClick();
 };
 // This object contains the only exposed methods from this module:
 export default {
